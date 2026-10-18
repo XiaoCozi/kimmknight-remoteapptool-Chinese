@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- =====================================================================
+     Directory.Build.props：MSBuild 会自动把这个文件“隐形导入”到仓库里
+     所有子项目（RemoteAppLib、LockChecker、主程序等）中，无需逐个修改。
+
+     作用：GitHub Actions 的云服务器（windows-latest 镜像）上没有安装
+     .NET Framework 4.0 的“引用程序集”（编译时需要的参考 DLL），
+     直接编译会报 MSB3644 错误。
+     这里通过 NuGet 包 Microsoft.NETFramework.ReferenceAssemblies
+     在编译时提供这些引用程序集。
+
+     Condition="'$(GITHUB_ACTIONS)' == 'true'"：
+     只有在 GitHub 云服务器上构建时才启用该包（GitHub 会自动设置这个
+     环境变量），您在本地用 Visual Studio 编译时完全不生效，
+     不需要联网还原 NuGet 包，本地开发体验零影响。
+     ===================================================================== -->
+<Project>
+  <ItemGroup Condition="'$(GITHUB_ACTIONS)' == 'true'">
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="All" />
+  </ItemGroup>
+</Project>

@@ -39,9 +39,11 @@ jobs:
         uses: microsoft/setup-msbuild@v2
 
       # 第 3 步：编译整个解决方案（Release 版）
+      # /restore 会先下载编译所需的 .NET Framework 4.0 引用程序集包
+      # （见仓库根目录的 Directory.Build.props，仅云服务器上生效）
       # 编译过程中，项目文件里的 BeforeBuild 会自动把依赖 DLL 嵌入主程序 exe
       - name: 编译解决方案
-        run: msbuild "remoteapp-tool\RemoteApp Tool.sln" /p:Configuration=Release /p:Platform="Any CPU" /m /nologo /v:m
+        run: msbuild "remoteapp-tool\RemoteApp Tool.sln" /restore /t:Rebuild /p:Configuration=Release /p:Platform="Any CPU" /m /nologo /v:m
 
       # 第 4 步：整理发布文件
       - name: 整理发布文件
