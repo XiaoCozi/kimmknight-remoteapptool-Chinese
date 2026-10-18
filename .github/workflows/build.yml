@@ -29,6 +29,11 @@ jobs:
     # 必须用 Windows 云服务器（本项目是 WinForms 程序，只能在 Windows 上编译）
     runs-on: windows-latest
 
+    # GITHUB_TOKEN 默认只有“只读”权限，无法创建 Release。
+    # 这里显式声明授予“写”权限，工作流末尾的“发布 Release”步骤才能成功。
+    permissions:
+      contents: write
+
     steps:
       # 第 1 步：把您仓库里的代码下载到云服务器上
       - name: 检出代码
