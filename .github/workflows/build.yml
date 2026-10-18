@@ -51,6 +51,7 @@ jobs:
         run: msbuild "remoteapp-tool\RemoteApp Tool.sln" /restore /t:Rebuild /p:Configuration=Release /p:Platform="Any CPU" /m /nologo /v:m
 
       # 第 4 步：整理发布文件
+      # 注意：Release 直接发布两个 exe 成品（不打包 zip），用户可按需单独下载
       - name: 整理发布文件
         shell: pwsh
         run: |
@@ -63,28 +64,7 @@ jobs:
           # 复制命令行工具（RDP 转 MSI）
           Copy-Item "RDP2MSI\bin\Release\RDP2MSI.exe" "publish\"
 
-          # 写一个简单的使用说明
-          $readme = @"
-          RemoteApp Tool 汉化版
-          =====================
-
-          【RemoteApp Tool.exe】
-            主程序，已内嵌全部依赖，复制任意一个文件夹后双击即可运行。
-            程序需要管理员权限（修改系统 RemoteApp 注册表），双击后请在弹窗中点“是”。
-
-          【RDP2MSI.exe】
-            命令行工具：把 RDP 连接文件转换为 MSI 安装包。
-            用法示例：rdp2msi.exe 我的连接.rdp
-            注意：生成 MSI 需要本机已安装 WiX Toolset v3.x。
-            可选开关：/D 桌面快捷方式  /S 开始菜单快捷方式  /N 不建子文件夹
-                      /A 稳定升级代码  /T 不加 (remote) 标签  /U 按用户安装
-          "@
-          # 去掉每行前导空格后写入文件
-          ($readme -split "`n" | ForEach-Object { $_.TrimEnd() } | Select-Object -Skip 1) -join "`n" | Set-Content -Path "publish\使用说明.txt" -Encoding UTF8
-
-          # 打包成 zip
-          Compress-Archive -Path "publish\*" -DestinationPath "RemoteAppTool-Chinese.zip"
-          Write-Host "打包完成："
+          Write-Host "发布文件准备完成："
           Get-ChildItem publish
 
       # 第 5 步：把产物上传到本次 Actions 运行页面
@@ -96,12 +76,64 @@ jobs:
           path: publish/
 
       # 第 6 步：只有推送 v 开头的标签时才会执行 —— 自动创建 GitHub Release
+      # 直接把两个 exe 作为附件发布（用户按需下载），使用说明写在 Release 页面
       - name: 发布 Release
         if: startsWith(github.ref, 'refs/tags/v')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "$($env:GITHUB_REF_NAME)" "RemoteAppTool-Chinese.zip" `
+          # 先把发布说明写成一个 Markdown 文件（Release 页面会原样显示）
+          $version = $env:GITHUB_REF_NAME
+          $notes = @"
+          # RemoteApp Tool 汉化版 $version
+
+          基于 [kimmknight/remoteapptool](https://github.com/kimmknight/remoteapptool) 汉化。
+
+          ## 下载说明
+
+          | 文件 | 说明 |
+          |------|------|
+          | **RemoteApp Tool.exe** | 主程序，普通用户只需下载这一个文件 |
+          | RDP2MSI.exe | 命令行工具（可选），把 RDP 连接文件转换为 MSI 安装包 |
+
+          ## 主程序使用方法
+
+          1. 下载 RemoteApp Tool.exe，放到任意文件夹
+          2. 双击运行即可（已内嵌全部依赖，无需其他文件）
+          3. 程序需要管理员权限来修改系统的 RemoteApp 注册表，弹出提示时请点"是"
+          4. 系统要求：Windows 7 或更高版本，需安装 .NET Framework 4.0 或更高版本
+
+          ## RDP2MSI.exe 使用方法（可选）
+
+          在命令行中运行：
+
+          ```
+          rdp2msi.exe 我的连接.rdp
+          ```
+
+          可选开关（可组合使用）：
+
+          | 开关 | 作用 |
+          |------|------|
+          | /D | 在桌面部署快捷方式 |
+          | /S | 在开始菜单部署快捷方式 |
+          | /N | 不在开始菜单创建子文件夹（需配合 /S） |
+          | /A | 基于应用名称生成稳定的升级代码 |
+          | /T | 不在快捷方式标题末尾附加 (remote) 标签 |
+          | /U | 按用户安装（默认按机器安装） |
+
+          注意：生成 MSI 需要本机已安装 WiX Toolset v3.x。
+
+          ## 许可证
+
+          MIT License
+          "@
+          # 去掉 here-string 每行开头的缩进空格后写入文件
+          $clean = ($notes -split "`n" | ForEach-Object { $_ -replace '^          ', '' }) -join "`n"
+          $clean | Set-Content -Path "RELEASE_NOTES.md" -Encoding UTF8
+
+          # 创建 Release：直接上传两个 exe 作为附件
+          gh release create "$($env:GITHUB_REF_NAME)" "publish\RemoteApp Tool.exe" "publish\RDP2MSI.exe" `
             --title "RemoteApp Tool 汉化版 $($env:GITHUB_REF_NAME)" `
-            --notes "RemoteApp Tool 汉化版构建成果。下载 RemoteAppTool-Chinese.zip 解压后，双击 RemoteApp Tool.exe 即可使用（已内嵌全部依赖 DLL）。"
+            --notes-file RELEASE_NOTES.md
