@@ -314,15 +314,13 @@
       <Private>False</Private>
     </ProjectReference>
   </ItemGroup>
-  <!-- 单文件发布：把 EmbeddedDeps 文件夹内的所有 DLL 作为资源嵌入 exe，
-       运行时由 ApplicationEvents.vb 中的 AssemblyResolve 事件自动从内存加载 -->
-  <ItemGroup>
-    <EmbeddedResource Include="EmbeddedDeps\*.dll" />
-  </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.VisualBasic.targets" />
-  <!-- 编译前自动把各子项目最新编译出的 DLL 同步到 EmbeddedDeps 文件夹，
-       这样嵌入 exe 内的依赖程序集始终是最新版本。
-       Condition 保证：文件尚不存在时（例如首次克隆代码）不会导致编译失败。 -->
+  <!-- 单文件发布支持：
+       1) 编译前自动把各子项目最新编译出的 DLL 同步到 EmbeddedDeps 文件夹；
+       2) 同步完成后再把该文件夹里的所有 DLL 声明为“嵌入资源”编进 exe。
+       注意：嵌入清单必须写在 Copy 之后（放在本 Target 内部），
+       否则 MSBuild 会在复制前就确定清单，导致新克隆的仓库嵌入不完整。
+       运行时由 ApplicationEvents.vb 中的 AssemblyResolve 事件从内存加载这些 DLL。 -->
   <Target Name="BeforeBuild">
     <ItemGroup>
       <EmbeddedDepSource Include="..\LockChecker\bin\$(Configuration)\LockChecker.dll" Condition="Exists('..\LockChecker\bin\$(Configuration)\LockChecker.dll')" />
@@ -333,6 +331,9 @@
       <EmbeddedDepSource Include="IconLib.dll" Condition="Exists('IconLib.dll')" />
     </ItemGroup>
     <Copy SourceFiles="@(EmbeddedDepSource)" DestinationFolder="EmbeddedDeps" SkipUnchangedFiles="true" />
+    <ItemGroup>
+      <EmbeddedResource Include="EmbeddedDeps\*.dll" />
+    </ItemGroup>
   </Target>
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
        Other similar extension points exist, see Microsoft.Common.targets.

@@ -1,0 +1,100 @@
+# =====================================================================
+# GitHub Actions 自动构建发布工作流
+# ---------------------------------------------------------------------
+# 作用：每当您向 GitHub 推送代码，GitHub 就会自动：
+#   1. 找一台 Windows 云服务器，检出您的代码；
+#   2. 用 MSBuild 编译整个解决方案（生成汉化版的 exe）；
+#   3. 把编译产物打包成 zip；
+#   4. 推送到 main 分支时：产物存放在 Actions 运行页面，可随时下载；
+#      推送 v 开头的标签（如 v1.0.0）时：自动创建 GitHub Release 并附上 zip。
+#
+# 如何触发 Release 发布：
+#   在本地执行以下两条命令即可（其他什么都不用做）：
+#     git tag v1.0.0
+#     git push origin v1.0.0
+# =====================================================================
+
+name: 构建发布
+
+on:
+  # 推送代码到 main 分支时触发
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]          # 推送 v 开头的标签时也会触发（用于发布 Release）
+  # 允许在 GitHub 网页上手动点击触发（Actions 页面 -> 选本工作流 -> Run workflow）
+  workflow_dispatch:
+
+jobs:
+  build:
+    # 必须用 Windows 云服务器（本项目是 WinForms 程序，只能在 Windows 上编译）
+    runs-on: windows-latest
+
+    steps:
+      # 第 1 步：把您仓库里的代码下载到云服务器上
+      - name: 检出代码
+        uses: actions/checkout@v4
+
+      # 第 2 步：让 msbuild 命令可用（VS 自带的编译器）
+      - name: 准备 MSBuild 编译环境
+        uses: microsoft/setup-msbuild@v2
+
+      # 第 3 步：编译整个解决方案（Release 版）
+      # 编译过程中，项目文件里的 BeforeBuild 会自动把依赖 DLL 嵌入主程序 exe
+      - name: 编译解决方案
+        run: msbuild "remoteapp-tool\RemoteApp Tool.sln" /p:Configuration=Release /p:Platform="Any CPU" /m /nologo /v:m
+
+      # 第 4 步：整理发布文件
+      - name: 整理发布文件
+        shell: pwsh
+        run: |
+          # 创建发布文件夹
+          New-Item -ItemType Directory -Path publish -Force | Out-Null
+
+          # 复制主程序（已内嵌全部依赖 DLL 的单文件版）
+          Copy-Item "remoteapp-tool\bin\Release\RemoteApp Tool.exe" "publish\"
+
+          # 复制命令行工具（RDP 转 MSI）
+          Copy-Item "RDP2MSI\bin\Release\RDP2MSI.exe" "publish\"
+
+          # 写一个简单的使用说明
+          $readme = @"
+          RemoteApp Tool 汉化版
+          =====================
+
+          【RemoteApp Tool.exe】
+            主程序，已内嵌全部依赖，复制任意一个文件夹后双击即可运行。
+            程序需要管理员权限（修改系统 RemoteApp 注册表），双击后请在弹窗中点“是”。
+
+          【RDP2MSI.exe】
+            命令行工具：把 RDP 连接文件转换为 MSI 安装包。
+            用法示例：rdp2msi.exe 我的连接.rdp
+            注意：生成 MSI 需要本机已安装 WiX Toolset v3.x。
+            可选开关：/D 桌面快捷方式  /S 开始菜单快捷方式  /N 不建子文件夹
+                      /A 稳定升级代码  /T 不加 (remote) 标签  /U 按用户安装
+          "@
+          # 去掉每行前导空格后写入文件
+          ($readme -split "`n" | ForEach-Object { $_.TrimEnd() } | Select-Object -Skip 1) -join "`n" | Set-Content -Path "publish\使用说明.txt" -Encoding UTF8
+
+          # 打包成 zip
+          Compress-Archive -Path "publish\*" -DestinationPath "RemoteAppTool-Chinese.zip"
+          Write-Host "打包完成："
+          Get-ChildItem publish
+
+      # 第 5 步：把产物上传到本次 Actions 运行页面
+      # （打开仓库 -> Actions -> 点进某次运行 -> 页面底部 Artifacts 区域即可下载）
+      - name: 上传构建产物
+        uses: actions/upload-artifact@v4
+        with:
+          name: RemoteAppTool-Chinese
+          path: publish/
+
+      # 第 6 步：只有推送 v 开头的标签时才会执行 —— 自动创建 GitHub Release
+      - name: 发布 Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$($env:GITHUB_REF_NAME)" "RemoteAppTool-Chinese.zip" `
+            --title "RemoteApp Tool 汉化版 $($env:GITHUB_REF_NAME)" `
+            --notes "RemoteApp Tool 汉化版构建成果。下载 RemoteAppTool-Chinese.zip 解压后，双击 RemoteApp Tool.exe 即可使用（已内嵌全部依赖 DLL）。"
